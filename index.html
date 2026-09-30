@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style></head><body>
+<title>Swift Club Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Karla:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen rating deck. Era strip on top, a single song card in the middle, six big rating keys underneath. Each album recolors the page with its era color. */
+:root{
+  --bg:#faf6f2; --fg:#1e191c; --muted:#6f6569; --surface:#fffdfb; --line:#e7dfd8; --soft:#f1ebe6;
+  --era:#7a4c9e; --on-era:#ffffff; --pos:#b3477a; --neg:#5d7fae;
+  --f-display:'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --f-body:'Karla', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono:'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#151216; --fg:#f2ecee; --muted:#a39a9f; --surface:#1e1a1f; --line:#322b32; --soft:#241f25; --on-era:#ffffff; color-scheme:dark }
+}
+:root[data-theme="dark"]{ --bg:#151216; --fg:#f2ecee; --muted:#a39a9f; --surface:#1e1a1f; --line:#322b32; --soft:#241f25; --on-era:#ffffff; color-scheme:dark }
+
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--era);outline-offset:2px}
+
+.app{max-width:760px;margin:0 auto;padding-inline:16px;padding-block:12px 28px;min-height:100%;display:flex;flex-direction:column;gap:14px}
+
+/* header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--f-display);font-size:1.45rem;letter-spacing:.005em}
+.brand em{font-style:italic;color:var(--era)}
+.modes{display:flex;gap:4px;background:var(--soft);border-radius:999px;padding:3px}
+.modes button{padding:6px 14px;border-radius:999px;font-size:.85rem;font-weight:500;color:var(--muted)}
+.modes button.on{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.save{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:6px;min-width:0}
+.save::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.save.ok::before{background:#3a9d5d}
+.save.busy::before{background:#d9a52a}
+.save.err::before{background:#c0392b}
+
+/* album strip */
+.albums{display:flex;gap:6px;overflow-x:auto;padding-block:4px;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.albums::-webkit-scrollbar{display:none}
+.chip{flex:none;display:flex;align-items:center;gap:7px;padding:6px 10px 6px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:.8rem;white-space:nowrap;color:var(--muted)}
+.chip .dot{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
+.chip .n{font-family:var(--f-mono);font-size:.7rem}
+.chip.cur{border-color:var(--c);color:var(--fg);box-shadow:inset 0 0 0 1px var(--c)}
+.chip.done{color:var(--fg)}
+.chip.done .n::after{content:' ✓'}
+
+/* card */
+.card{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:34px 26px 28px;min-height:230px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.card::before{content:'';position:absolute;inset:0 0 auto 0;height:7px;background:var(--era)}
+.eyebrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.eyebrow .al{color:var(--era);font-weight:700}
+.eyebrow .tr{font-family:var(--f-mono);letter-spacing:.02em;text-transform:none}
+.tag{font-size:.68rem;letter-spacing:.06em;padding:2px 7px;border-radius:5px;background:var(--soft);color:var(--muted)}
+.tag.five{background:var(--era);color:var(--on-era)}
+.song{font-family:var(--f-display);font-style:italic;font-weight:400;font-size:clamp(2.1rem,7.5vw,3.5rem);line-height:1.05;margin:0;text-wrap:balance;overflow-wrap:anywhere}
+.feat{font-size:.95rem;color:var(--muted)}
+.cur-rating{font-size:.85rem;color:var(--muted)}
+.cur-rating b{color:var(--era)}
+
+/* rating keys */
+.rates{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+@media (max-width:560px){.rates{grid-template-columns:repeat(3,1fr)}}
+.rb{min-height:70px;border:1.5px solid var(--line);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;transition:transform .08s ease,background .12s ease,border-color .12s ease}
+.rb:hover{border-color:var(--era)}
+.rb:active{transform:scale(.96)}
+.rb .k{font-family:var(--f-mono);font-size:1.3rem;font-weight:500;line-height:1}
+.rb .l{font-size:.76rem;color:var(--muted);letter-spacing:.01em}
+.rb.on{background:var(--era);border-color:var(--era);color:var(--on-era)}
+.rb.on .l{color:var(--on-era);opacity:.85}
+.rb.dk{border-style:dashed}
+.rb.flash{background:var(--era);border-color:var(--era);color:var(--on-era)}
+.rb.flash .l{color:var(--on-era)}
+@media (prefers-reduced-motion: reduce){.rb{transition:none}}
+
+.navrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.navrow button{font-size:.85rem;color:var(--muted);padding:6px 10px;border-radius:8px}
+.navrow button:hover{background:var(--soft);color:var(--fg)}
+.navrow .p{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--era);width:0;transition:width .2s ease}
+.keys{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);text-align:center;display:none}
+@media (hover:hover) and (pointer:fine){.keys{display:block}}
+
+/* review list */
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filters button{padding:6px 11px;border-radius:999px;border:1px solid var(--line);font-size:.8rem;color:var(--muted);background:var(--surface)}
+.filters button.on{border-color:var(--fg);color:var(--fg)}
+.filters .n{font-family:var(--f-mono);font-size:.7rem;margin-left:5px}
+.group{margin-top:14px}
+.group h2{font-family:var(--f-display);font-weight:400;font-size:1.5rem;margin:0 0 6px;display:flex;align-items:baseline;gap:10px}
+.group h2 .dot{width:10px;height:10px;border-radius:50%;background:var(--c);display:inline-block;flex:none}
+.group h2 .avg{font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
+.row{display:grid;grid-template-columns:2ch minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.row .no{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);text-align:right}
+.row .ti{min-width:0;overflow-wrap:anywhere;cursor:pointer}.row .ti:hover{color:var(--era);text-decoration:underline;text-underline-offset:3px}
+.row .ti small{color:var(--muted);font-size:.8rem}
+.mini{display:flex;gap:3px}
+.mini button{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
+.mini button.on{background:var(--c);border-color:var(--c);color:#fff}
+.mini button.dk{border-style:dashed}
+.empty{color:var(--muted);padding:20px 0}
+
+/* done */
+.done{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 24px;display:flex;flex-direction:column;gap:16px}
+.done h1{font-family:var(--f-display);font-weight:400;font-size:2.2rem;margin:0;line-height:1.1}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.stat{padding:12px;border-radius:12px;background:var(--soft)}
+.stat b{display:block;font-family:var(--f-mono);font-size:1.4rem;font-weight:500}
+.stat span{font-size:.78rem;color:var(--muted)}
+.tolisten{display:flex;flex-direction:column;gap:4px}
+.tolisten div{display:flex;gap:10px;align-items:baseline;padding:5px 0;border-top:1px solid var(--line)}
+.tolisten .a{font-size:.75rem;color:var(--muted);min-width:9ch}
+.done p{margin:0;color:var(--muted)}
+.done .again{align-self:flex-start;padding:8px 14px;border-radius:999px;border:1px solid var(--line);font-size:.85rem}
+
+/* results */
+.res-title{font-family:var(--f-display);font-weight:400;font-size:2.3rem;margin:0;line-height:1.05;text-wrap:balance}
+.res-sub{margin:6px 0 0;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px 18px;margin-top:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.panel h2{font-family:var(--f-display);font-weight:400;font-size:1.6rem;margin:0}
+.note{color:var(--muted);font-size:.85rem;margin:0;max-width:65ch}
+.hb{display:grid;grid-template-columns:minmax(0,9.5rem) minmax(0,1fr) 3.2rem;gap:10px;align-items:center;padding:4px 0;font-size:.88rem}
+.hb .lab{min-width:0;overflow-wrap:anywhere}
+.hb .lab .rk{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);margin-right:6px}
+.hb .trk{position:relative;height:14px;background:var(--soft);border-radius:4px}
+.hb .fill{position:absolute;top:0;bottom:0;left:0;border-radius:0 4px 4px 0}
+.hb .val{font-family:var(--f-mono);font-size:.8rem;text-align:right;font-variant-numeric:tabular-nums}
+.hb small{display:block;color:var(--muted);font-size:.72rem}
+.div .trk{background:none;border-left:0}
+.div .mid{position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
+.pos{background:var(--pos)}.neg{background:var(--neg)}
+.twocol{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.twocol h3{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:4px 0}
+.findings{display:flex;flex-direction:column;gap:10px;max-width:68ch}
+.findings p{margin:0;line-height:1.55}
+.tier{margin-top:10px}
+.tier h3{font-family:var(--f-display);font-weight:400;font-size:1.25rem;margin:0 0 4px}
+.tier h3 span{font-family:var(--f-mono);font-size:.75rem;color:var(--muted)}
+.tier ul{list-style:none;margin:0;padding:0;columns:2 240px;column-gap:24px}
+.tier li{break-inside:avoid;padding:3px 0;font-size:.88rem;display:flex;gap:8px;align-items:baseline}
+.tier li i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--c);transform:translateY(-1px)}
+.tier li small{color:var(--muted);font-size:.75rem}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:.85rem;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100% - 32px);text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand">Swift <em>Club</em> Ledger</div>
+    <div class="modes" role="tablist">
+      <button id="mode-rate" class="on" role="tab">Rate</button>
+      <button id="mode-list" role="tab">Review</button>
+      <button id="mode-res" role="tab">Results</button>
+    </div>
+    <div class="save" id="save">Loading</div>
+  </header>
+
+  <nav class="albums" id="albums" aria-label="Albums"></nav>
+
+  <main id="rate-view">
+    <div class="card">
+      <div class="eyebrow">
+        <span class="al" id="c-album"></span>
+        <span class="tr" id="c-track"></span>
+        <span class="tag five" id="c-five" hidden>Track five</span>
+        <span class="tag" id="c-vault" hidden>From the Vault</span>
+        <span class="tag" id="c-bonus" hidden>Bonus</span>
+      </div>
+      <h1 class="song" id="c-title"></h1>
+      <div class="feat" id="c-feat" hidden></div>
+      <div class="cur-rating" id="c-cur" hidden></div>
+    </div>
+    <div class="rates" id="rates">
+      <button class="rb" data-r="1" id="rb1"><span class="k">1</span><span class="l">Skip it</span></button>
+      <button class="rb" data-r="2" id="rb2"><span class="k">2</span><span class="l">Meh</span></button>
+      <button class="rb" data-r="3" id="rb3"><span class="k">3</span><span class="l">Good</span></button>
+      <button class="rb" data-r="4" id="rb4"><span class="k">4</span><span class="l">Love it</span></button>
+      <button class="rb" data-r="5" id="rb5"><span class="k">5</span><span class="l">Top tier</span></button>
+      <button class="rb dk" data-r="0" id="rb0"><span class="k">?</span><span class="l">Don't know it</span></button>
+    </div>
+    <div class="navrow">
+      <button id="back">← Back</button>
+      <span class="p" id="prog"></span>
+      <button id="skip">Next →</button>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="keys">keys · 1–5 rate · 0 don't know · ← back · → next · Esc review</div>
+  </main>
+
+  <section id="list-view" hidden>
+    <div class="filters" id="filters"></div>
+    <div id="list"></div>
+  </section>
+
+  <section id="done-view" hidden></section>
+
+  <section id="res-view" hidden>
+    <div class="res-head">
+      <h1 class="res-title">What your ratings say</h1>
+      <p class="res-sub" id="res-sub"></p>
+      <p class="note">Your ratings stay in this browser on this device. Nobody else can see them unless you copy and share them.</p>
+    </div>
+    <div class="panel">
+      <h2>Album ranking</h2>
+      <p class="note">Average rating of the songs you know. Ties are broken by the number of top-tier songs. The bar shows the average on a 1–5 scale.</p>
+      <div id="res-albums"></div>
+    </div>
+    <div class="panel">
+      <h2>Lyrical themes</h2>
+      <p class="note">Each song is tagged with two themes. Bars show how far each theme's average sits above or below your overall average.</p>
+      <div id="res-themes"></div>
+    </div>
+    <div class="panel">
+      <h2>Tempo and feel</h2>
+      <p class="note">Average rating by tempo (BPM, with half-time/double-time readings corrected) and by feel.</p>
+      <div class="twocol"><div id="res-bpm"></div><div id="res-feel"></div></div>
+      <p class="note" id="res-ballad"></p>
+    </div>
+    <div class="panel">
+      <h2>What stands out</h2>
+      <div class="findings" id="res-find"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="again" id="copyres">Copy my results</button>
+        <span class="note" id="copynote">Paste them into the club chat to compare.</span>
+      </div>
+      <textarea id="copybox" readonly hidden style="width:100%;min-height:160px;font:inherit;font-size:.85rem;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg)"></textarea>
+    </div>
+    <div class="panel">
+      <h2>Every song, ranked</h2>
+      <p class="note">Grouped by your rating. Within a tier, songs are listed by album.</p>
+      <div id="res-songs"></div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const S=(t,o)=>Object.assign({t},o||{});
+const ALBUMS=[
+ {id:'debut',name:'Taylor Swift',year:2006,color:'#3f8f7e',songs:[
+  S('Tim McGraw'),S('Picture to Burn'),S('Teardrops on My Guitar'),S('A Place in This World'),S('Cold as You'),S('The Outside'),S('Tied Together with a Smile'),S('Stay Beautiful'),S("Should've Said No"),S("Mary's Song (Oh My My My)"),S('Our Song'),S("I'm Only Me When I'm with You",{b:1}),S('Invisible',{b:1}),S('A Perfectly Good Heart',{b:1})]},
+ {id:'fearless',name:'Fearless',year:2008,color:'#c9a227',songs:[
+  S('Fearless'),S('Fifteen'),S('Love Story'),S('Hey Stephen'),S('White Horse'),S('You Belong with Me'),S('Breathe',{f:'feat. Colbie Caillat'}),S('Tell Me Why'),S("You're Not Sorry"),S('The Way I Loved You'),S('Forever & Always'),S('The Best Day'),S('Change'),S('Jump Then Fall'),S('Untouchable'),S('Come In with the Rain'),S('Superstar'),S('The Other Side of the Door'),S('Today Was a Fairytale'),S('You All Over Me',{f:'feat. Maren Morris',v:1}),S('Mr. Perfectly Fine',{v:1}),S('We Were Happy',{v:1}),S("That's When",{f:'feat. Keith Urban',v:1}),S("Don't You",{v:1}),S('Bye Bye Baby',{v:1})]},
+ {id:'speaknow',name:'Speak Now',year:2010,color:'#7a4c9e',songs:[
+  S('Mine'),S('Sparks Fly'),S('Back to December'),S('Speak Now'),S('Dear John'),S('Mean'),S('The Story of Us'),S('Never Grow Up'),S('Enchanted'),S('Better Than Revenge'),S('Innocent'),S('Haunted'),S('Last Kiss'),S('Long Live'),S('Ours'),S('Superman'),S('If This Was a Movie',{b:1}),S('Electric Touch',{f:'feat. Fall Out Boy',v:1}),S('When Emma Falls in Love',{v:1}),S('I Can See You',{v:1}),S('Castles Crumbling',{f:'feat. Hayley Williams',v:1}),S('Foolish One',{v:1}),S('Timeless',{v:1})]},
+ {id:'red',name:'Red',year:2012,color:'#b3232f',songs:[
+  S('State of Grace'),S('Red'),S('Treacherous'),S('I Knew You Were Trouble'),S('All Too Well'),S('22'),S('I Almost Do'),S('We Are Never Ever Getting Back Together'),S('Stay Stay Stay'),S('The Last Time',{f:'feat. Gary Lightbody'}),S('Holy Ground'),S('Sad Beautiful Tragic'),S('The Lucky One'),S('Everything Has Changed',{f:'feat. Ed Sheeran'}),S('Starlight'),S('Begin Again'),S('The Moment I Knew',{b:1}),S('Come Back... Be Here',{b:1}),S('Girl at Home',{b:1}),S('Ronan',{b:1}),S('Better Man',{v:1}),S('Nothing New',{f:'feat. Phoebe Bridgers',v:1}),S('Babe',{v:1}),S('Message in a Bottle',{v:1}),S('I Bet You Think About Me',{f:'feat. Chris Stapleton',v:1}),S('Forever Winter',{v:1}),S('Run',{f:'feat. Ed Sheeran',v:1}),S('The Very First Night',{v:1}),S('All Too Well (10 Minute Version)',{v:1})]},
+ {id:'1989',name:'1989',year:2014,color:'#4a90c8',songs:[
+  S('Welcome to New York'),S('Blank Space'),S('Style'),S('Out of the Woods'),S('All You Had to Do Was Stay'),S('Shake It Off'),S('I Wish You Would'),S('Bad Blood'),S('Wildest Dreams'),S('How You Get the Girl'),S('This Love'),S('I Know Places'),S('Clean'),S('Wonderland',{b:1}),S('You Are in Love',{b:1}),S('New Romantics',{b:1}),S('Sweeter than Fiction',{b:1}),S('"Slut!"',{v:1}),S("Say Don't Go",{v:1}),S("Now That We Don't Talk",{v:1}),S('Suburban Legends',{v:1}),S('Is It Over Now?',{v:1})]},
+ {id:'reputation',name:'reputation',year:2017,color:'#5c5c66',songs:[
+  S('...Ready for It?'),S('End Game',{f:'feat. Ed Sheeran & Future'}),S('I Did Something Bad'),S("Don't Blame Me"),S('Delicate'),S('Look What You Made Me Do'),S('So It Goes...'),S('Gorgeous'),S('Getaway Car'),S('King of My Heart'),S('Dancing with Our Hands Tied'),S('Dress'),S("This Is Why We Can't Have Nice Things"),S('Call It What You Want'),S("New Year's Day")]},
+ {id:'lover',name:'Lover',year:2019,color:'#e0679a',songs:[
+  S('I Forgot That You Existed'),S('Cruel Summer'),S('Lover'),S('The Man'),S('The Archer'),S('I Think He Knows'),S('Miss Americana & the Heartbreak Prince'),S('Paper Rings'),S('Cornelia Street'),S('Death by a Thousand Cuts'),S('London Boy'),S("Soon You'll Get Better",{f:'feat. The Chicks'}),S('False God'),S('You Need to Calm Down'),S('Afterglow'),S('ME!',{f:'feat. Brendon Urie'}),S("It's Nice to Have a Friend"),S('Daylight')]},
+ {id:'folklore',name:'folklore',year:2020,color:'#7b8578',songs:[
+  S('the 1'),S('cardigan'),S('the last great american dynasty'),S('exile',{f:'feat. Bon Iver'}),S('my tears ricochet'),S('mirrorball'),S('seven'),S('august'),S('this is me trying'),S('illicit affairs'),S('invisible string'),S('mad woman'),S('epiphany'),S('betty'),S('peace'),S('hoax'),S('the lakes',{b:1})]},
+ {id:'evermore',name:'evermore',year:2020,color:'#b8663a',songs:[
+  S('willow'),S('champagne problems'),S('gold rush'),S("'tis the damn season"),S('tolerate it'),S('no body, no crime',{f:'feat. HAIM'}),S('happiness'),S('dorothea'),S('coney island',{f:'feat. The National'}),S('ivy'),S('cowboy like me'),S('long story short'),S('marjorie'),S('closure'),S('evermore',{f:'feat. Bon Iver'}),S('right where you left me',{b:1}),S("it's time to go",{b:1})]},
+ {id:'midnights',name:'Midnights',year:2022,color:'#4f5b9e',songs:[
+  S('Lavender Haze'),S('Maroon'),S('Anti-Hero'),S('Snow on the Beach',{f:'feat. Lana Del Rey'}),S("You're on Your Own, Kid"),S('Midnight Rain'),S('Question...?'),S('Vigilante Shit'),S('Bejeweled'),S('Labyrinth'),S('Karma'),S('Sweet Nothing'),S('Mastermind'),S('The Great War',{b:1}),S('Bigger Than the Whole Sky',{b:1}),S('Paris',{b:1}),S('High Infidelity',{b:1}),S('Glitch',{b:1}),S("Would've, Could've, Should've",{b:1}),S('Dear Reader',{b:1}),S('Hits Different',{b:1}),S("You're Losing Me",{v:1})]},
+ {id:'ttpd',name:'The Tortured Poets Department',short:'TTPD',year:2024,color:'#8c7b66',songs:[
+  S('Fortnight',{f:'feat. Post Malone'}),S('The Tortured Poets Department'),S('My Boy Only Breaks His Favorite Toys'),S('Down Bad'),S('So Long, London'),S('But Daddy I Love Him'),S('Fresh Out the Slammer'),S('Florida!!!',{f:'feat. Florence + the Machine'}),S('Guilty as Sin?'),S("Who's Afraid of Little Old Me?"),S('I Can Fix Him (No Really I Can)'),S('loml'),S('I Can Do It with a Broken Heart'),S('The Smallest Man Who Ever Lived'),S('The Alchemy'),S('Clara Bow'),S('The Manuscript',{b:1}),S('The Black Dog',{b:1}),S('imgonnagetyouback',{b:1}),S('The Albatross',{b:1}),S('Chloe or Sam or Sophia or Marcus',{b:1}),S('How Did It End?',{b:1}),S('So High School',{b:1}),S('I Hate It Here',{b:1}),S('thanK you aIMee',{b:1}),S("I Look in People's Windows",{b:1}),S('The Prophecy',{b:1}),S('Cassandra',{b:1}),S('Peter',{b:1}),S('The Bolter',{b:1}),S('Robin',{b:1})]},
+ {id:'showgirl',name:'The Life of a Showgirl',short:'Showgirl',year:2025,color:'#e0742e',songs:[
+  S('The Fate of Ophelia'),S('Elizabeth Taylor'),S('Opalite'),S('Father Figure'),S('Eldest Daughter'),S('Ruin the Friendship'),S('Actually Romantic'),S('Wi$h Li$t'),S('Wood'),S('CANCELLED!'),S('Honey'),S('The Life of a Showgirl',{f:'feat. Sabrina Carpenter'}),S('Patient Zero',{b:1}),S('Cleveland!',{b:1}),S('Pink Clouding',{b:1}),S('Babylon',{b:1})]},
+ {id:'singles',name:'Loose singles & soundtracks',short:'Singles',year:null,color:'#6e6e7a',songs:[
+  S('Crazier'),S('Safe & Sound',{f:'feat. The Civil Wars'}),S('Eyes Open'),S("I Don't Wanna Live Forever",{f:'with Zayn'}),S('Beautiful Ghosts'),S('Christmas Tree Farm'),S('Only the Young'),S('Carolina'),S('I Knew It, I Knew You')]}
+];
+const SONGS=[];const byId={};
+ALBUMS.forEach((a,ai)=>{a.ai=ai;a.songs.forEach((sg,si)=>{const s=Object.assign({},sg,{id:a.id+'-'+String(si+1).padStart(2,'0'),ai,si,album:a});SONGS.push(s);byId[s.id]=s;});});
+const META={"debut-01":[76,234,"ballad","low","nostalgia","longing","second-person-address","country"],"debut-02":[106,175,"uptempo","high","revenge","heartbreak","second-person-address","country"],"debut-03":[100,215,"mid","medium","longing","heartbreak","first-person-confessional","country-pop"],"debut-04":[115,202,"mid","medium","growing-up","self-reflection","first-person-confessional","country-pop"],"debut-05":[88,241,"ballad","low","heartbreak","betrayal","second-person-address","country"],"debut-06":[113,209,"mid","medium","self-reflection","longing","first-person-confessional","country"],"debut-07":[146,251,"ballad","low","friendship","anxiety","second-person-address","country"],"debut-08":[132,238,"mid","medium","falling-in-love","longing","second-person-address","country"],"debut-09":[84,244,"uptempo","high","betrayal","defiance","second-person-address","country-pop"],"debut-10":[75,215,"mid","medium","storytelling-fiction","growing-up","character-narrator","country"],"debut-11":[89,204,"uptempo","high","falling-in-love","celebration","first-person-confessional","country"],"debut-12":[144,215,"uptempo","high","friendship","falling-in-love","second-person-address","country-pop"],"debut-13":[96,206,"ballad","low","longing","self-reflection","second-person-address","country-pop"],"debut-14":[78,222,"ballad","medium","heartbreak","betrayal","second-person-address","country-pop"],"fearless-01":[100,241,"uptempo","high","falling-in-love","growing-up","second-person-address","country-pop"],"fearless-02":[95,294,"mid","medium","growing-up","nostalgia","first-person-confessional","country-pop"],"fearless-03":[119,235,"uptempo","high","fantasy-fairytale","forbidden-love","first-person-confessional","country-pop"],"fearless-04":[116,254,"mid","medium","falling-in-love","longing","second-person-address","country-pop"],"fearless-05":[92,234,"ballad","low","heartbreak","fantasy-fairytale","second-person-address","country-pop"],"fearless-06":[130,231,"uptempo","high","longing","falling-in-love","second-person-address","country-pop"],"fearless-07":[148,263,"ballad","low","heartbreak","friendship","second-person-address","country-pop"],"fearless-08":[100,200,"uptempo","high","heartbreak","anxiety","second-person-address","country-pop"],"fearless-09":[134,261,"ballad","medium","betrayal","heartbreak","second-person-address","country-pop"],"fearless-10":[80,243,"uptempo","high","longing","nostalgia","first-person-confessional","rock-tinged"],"fearless-11":[128,225,"uptempo","high","betrayal","heartbreak","second-person-address","country-pop"],"fearless-12":[125,245,"ballad","low","family","nostalgia","second-person-address","country"],"fearless-13":[96,279,"uptempo","high","defiance","celebration","first-person-confessional","rock-tinged"],"fearless-14":[80,237,"uptempo","high","falling-in-love","celebration","second-person-address","country-pop"],"fearless-15":[100,312,"ballad","medium","longing","fantasy-fairytale","second-person-address","country-pop"],"fearless-16":[144,237,"ballad","low","longing","heartbreak","second-person-address","country-pop"],"fearless-17":[86,263,"ballad","low","longing","fame-and-reputation","second-person-address","country-pop"],"fearless-18":[82,238,"uptempo","high","heartbreak","longing","second-person-address","country-pop"],"fearless-19":[79,241,"uptempo","high","fantasy-fairytale","falling-in-love","second-person-address","country-pop"],"fearless-20":[143,220,"mid","medium","heartbreak","nostalgia","first-person-confessional","country"],"fearless-21":[136,277,"uptempo","high","heartbreak","revenge","second-person-address","country-pop"],"fearless-22":[106,244,"ballad","low","nostalgia","heartbreak","first-person-confessional","country"],"fearless-23":[90,189,"mid","medium","longing","falling-in-love","second-person-address","country-pop"],"fearless-24":[102,208,"ballad","low","longing","heartbreak","second-person-address","synth-pop"],"fearless-25":[80,242,"ballad","low","heartbreak","grief","second-person-address","country-pop"],"speaknow-01":[121,231,"uptempo","high","falling-in-love","family","second-person-address","country-pop"],"speaknow-02":[115,261,"uptempo","high","falling-in-love","sex-and-desire","second-person-address","country-pop"],"speaknow-03":[142,294,"ballad","medium","heartbreak","self-reflection","second-person-address","country-pop"],"speaknow-04":[119,242,"uptempo","medium","storytelling-fiction","forbidden-love","first-person-confessional","country-pop"],"speaknow-05":[119,405,"ballad","low","betrayal","growing-up","second-person-address","country"],"speaknow-06":[82,238,"uptempo","high","defiance","fame-and-reputation","second-person-address","country"],"speaknow-07":[140,267,"uptempo","high","heartbreak","anxiety","first-person-confessional","rock-tinged"],"speaknow-08":[125,292,"ballad","low","growing-up","nostalgia","second-person-address","country"],"speaknow-09":[82,353,"mid","medium","falling-in-love","longing","second-person-address","country-pop"],"speaknow-10":[146,220,"uptempo","high","revenge","betrayal","second-person-address","rock-tinged"],"speaknow-11":[134,301,"ballad","low","self-reflection","growing-up","second-person-address","country-pop"],"speaknow-12":[81,245,"uptempo","high","heartbreak","anxiety","second-person-address","rock-tinged"],"speaknow-13":[80,369,"ballad","low","heartbreak","nostalgia","second-person-address","country"],"speaknow-14":[102,317,"uptempo","high","celebration","nostalgia","second-person-address","rock-tinged"],"speaknow-15":[80,235,"mid","medium","falling-in-love","defiance","second-person-address","country-pop"],"speaknow-16":[132,274,"uptempo","medium","longing","fantasy-fairytale","second-person-address","country-pop"],"speaknow-17":[148,237,"mid","medium","longing","heartbreak","second-person-address","country-pop"],"speaknow-18":[131,266,"uptempo","high","falling-in-love","anxiety","second-person-address","rock-tinged"],"speaknow-19":[78,252,"ballad","low","storytelling-fiction","friendship","observer","country-pop"],"speaknow-20":[123,273,"uptempo","high","sex-and-desire","forbidden-love","second-person-address","rock-tinged"],"speaknow-21":[148,306,"ballad","medium","fame-and-reputation","anxiety","first-person-confessional","rock-tinged"],"speaknow-22":[97,311,"mid","medium","self-reflection","longing","first-person-confessional","country-pop"],"speaknow-23":[143,321,"mid","medium","nostalgia","falling-in-love","second-person-address","country-pop"],"red-01":[130,295,"uptempo","high","falling-in-love","self-reflection","first-person-confessional","rock-tinged"],"red-02":[125,223,"uptempo","high","heartbreak","falling-in-love","second-person-address","country-pop"],"red-03":[110,242,"ballad","medium","sex-and-desire","forbidden-love","second-person-address","country-pop"],"red-04":[77,219,"uptempo","high","heartbreak","betrayal","second-person-address","electro-pop"],"red-05":[93,329,"ballad","medium","heartbreak","nostalgia","second-person-address","country-pop"],"red-06":[104,230,"uptempo","high","celebration","friendship","first-person-confessional","dance-pop"],"red-07":[146,244,"ballad","medium","longing","heartbreak","second-person-address","country-pop"],"red-08":[86,193,"uptempo","high","defiance","heartbreak","second-person-address","pop"],"red-09":[100,205,"uptempo","high","falling-in-love","celebration","second-person-address","country-pop"],"red-10":[94,299,"ballad","medium","heartbreak","longing","second-person-address","rock-tinged"],"red-11":[78,202,"uptempo","high","nostalgia","celebration","second-person-address","rock-tinged"],"red-12":[130,284,"ballad","low","grief","heartbreak","second-person-address","country"],"red-13":[118,240,"mid","medium","fame-and-reputation","escape","character-narrator","pop"],"red-14":[80,245,"mid","medium","falling-in-love","nostalgia","second-person-address","country-pop"],"red-15":[126,220,"uptempo","high","storytelling-fiction","nostalgia","character-narrator","dance-pop"],"red-16":[79,238,"ballad","low","falling-in-love","self-reflection","first-person-confessional","country"],"red-17":[126,285,"ballad","low","heartbreak","betrayal","second-person-address","pop"],"red-18":[80,223,"ballad","medium","longing","escape","second-person-address","country-pop"],"red-19":[125,220,"uptempo","high","defiance","betrayal","second-person-address","pop"],"red-20":[116,264,"ballad","low","grief","family","second-person-address","country"],"red-21":[74,297,"ballad","medium","heartbreak","longing","second-person-address","country"],"red-22":[102,258,"ballad","low","growing-up","fame-and-reputation","first-person-confessional","indie-folk"],"red-23":[84,224,"mid","medium","betrayal","heartbreak","second-person-address","country-pop"],"red-24":[116,225,"uptempo","high","longing","falling-in-love","second-person-address","dance-pop"],"red-25":[75,285,"mid","medium","revenge","heartbreak","second-person-address","country"],"red-26":[116,263,"mid","medium","anxiety","friendship","second-person-address","pop"],"red-27":[125,240,"ballad","low","escape","forbidden-love","second-person-address","indie-folk"],"red-28":[121,200,"uptempo","high","nostalgia","longing","second-person-address","dance-pop"],"red-29":[93,613,"ballad","medium","heartbreak","nostalgia","second-person-address","country-pop"],"1989-01":[117,212,"uptempo","high","home-and-place","escape","first-person-confessional","synth-pop"],"1989-02":[96,231,"uptempo","high","fame-and-reputation","storytelling-fiction","character-narrator","synth-pop"],"1989-03":[95,231,"uptempo","high","sex-and-desire","nostalgia","second-person-address","synth-pop"],"1989-04":[92,235,"uptempo","high","anxiety","nostalgia","second-person-address","synth-pop"],"1989-05":[97,193,"uptempo","high","heartbreak","defiance","second-person-address","synth-pop"],"1989-06":[80,219,"uptempo","high","defiance","celebration","first-person-confessional","dance-pop"],"1989-07":[118,207,"uptempo","high","longing","nostalgia","second-person-address","synth-pop"],"1989-08":[85,211,"uptempo","high","betrayal","revenge","second-person-address","electro-pop"],"1989-09":[140,220,"mid","medium","longing","sex-and-desire","second-person-address","synth-pop"],"1989-10":[120,247,"uptempo","high","longing","falling-in-love","second-person-address","synth-pop"],"1989-11":[144,250,"ballad","low","longing","seasons-and-time","first-person-confessional","synth-pop"],"1989-12":[80,195,"uptempo","high","escape","fame-and-reputation","second-person-address","electro-pop"],"1989-13":[104,271,"ballad","low","self-reflection","seasons-and-time","first-person-confessional","synth-pop"],"1989-14":[123,245,"uptempo","high","fantasy-fairytale","heartbreak","second-person-address","electro-pop"],"1989-15":[85,267,"ballad","low","falling-in-love","friendship","second-person-address","synth-pop"],"1989-16":[122,230,"uptempo","high","celebration","growing-up","first-person-confessional","synth-pop"],"1989-17":[135,238,"uptempo","high","friendship","celebration","second-person-address","synth-pop"],"1989-18":[78,180,"ballad","low","fame-and-reputation","falling-in-love","second-person-address","synth-pop"],"1989-19":[110,279,"uptempo","high","longing","heartbreak","second-person-address","synth-pop"],"1989-20":[110,146,"uptempo","medium","heartbreak","self-reflection","second-person-address","synth-pop"],"1989-21":[118,171,"uptempo","high","nostalgia","longing","second-person-address","synth-pop"],"1989-22":[100,229,"uptempo","high","heartbreak","betrayal","second-person-address","synth-pop"],"reputation-01":[80,208,"uptempo","high","sex-and-desire","fantasy-fairytale","second-person-address","electro-pop"],"reputation-02":[80,244,"mid","high","fame-and-reputation","falling-in-love","second-person-address","electro-pop"],"reputation-03":[83,238,"uptempo","high","defiance","revenge","first-person-confessional","electro-pop"],"reputation-04":[136,236,"mid","high","sex-and-desire","falling-in-love","second-person-address","electro-pop"],"reputation-05":[95,232,"mid","medium","falling-in-love","anxiety","second-person-address","synth-pop"],"reputation-06":[128,211,"uptempo","high","revenge","fame-and-reputation","second-person-address","electro-pop"],"reputation-07":[75,227,"mid","medium","sex-and-desire","escape","second-person-address","electro-pop"],"reputation-08":[92,209,"uptempo","high","falling-in-love","longing","second-person-address","synth-pop"],"reputation-09":[86,233,"uptempo","high","storytelling-fiction","escape","second-person-address","synth-pop"],"reputation-10":[110,214,"mid","high","falling-in-love","celebration","second-person-address","electro-pop"],"reputation-11":[80,211,"uptempo","high","anxiety","falling-in-love","second-person-address","electro-pop"],"reputation-12":[120,230,"mid","medium","sex-and-desire","forbidden-love","second-person-address","electro-pop"],"reputation-13":[82,207,"uptempo","high","betrayal","revenge","second-person-address","electro-pop"],"reputation-14":[82,203,"mid","medium","falling-in-love","fame-and-reputation","second-person-address","synth-pop"],"reputation-15":[95,235,"ballad","low","falling-in-love","nostalgia","second-person-address","chamber-pop"],"lover-01":[93,171,"mid","medium","self-reflection","heartbreak","second-person-address","pop"],"lover-02":[85,178,"uptempo","high","forbidden-love","falling-in-love","second-person-address","synth-pop"],"lover-03":[69,221,"ballad","low","falling-in-love","celebration","second-person-address","chamber-pop"],"lover-04":[110,190,"uptempo","high","defiance","fame-and-reputation","first-person-confessional","electro-pop"],"lover-05":[124,211,"ballad","low","anxiety","self-reflection","first-person-confessional","synth-pop"],"lover-06":[100,173,"uptempo","high","falling-in-love","sex-and-desire","second-person-address","electro-pop"],"lover-07":[75,234,"mid","medium","storytelling-fiction","defiance","character-narrator","synth-pop"],"lover-08":[104,222,"uptempo","high","falling-in-love","celebration","second-person-address","rock-tinged"],"lover-09":[102,287,"mid","medium","anxiety","nostalgia","second-person-address","synth-pop"],"lover-10":[94,199,"mid","medium","heartbreak","longing","first-person-confessional","pop"],"lover-11":[79,190,"uptempo","high","home-and-place","falling-in-love","first-person-confessional","electro-pop"],"lover-12":[104,202,"ballad","low","family","anxiety","second-person-address","country"],"lover-13":[80,200,"ballad","low","sex-and-desire","forbidden-love","second-person-address","pop"],"lover-14":[85,171,"uptempo","high","defiance","celebration","second-person-address","dance-pop"],"lover-15":[111,223,"mid","medium","self-reflection","falling-in-love","second-person-address","pop"],"lover-16":[91,193,"uptempo","high","celebration","self-reflection","second-person-address","pop"],"lover-17":[70,150,"ballad","low","friendship","growing-up","observer","chamber-pop"],"lover-18":[75,293,"ballad","low","falling-in-love","self-reflection","first-person-confessional","synth-pop"],"folklore-01":[140,210,"mid","low","longing","nostalgia","second-person-address","indie-folk"],"folklore-02":[130,239,"ballad","low","nostalgia","longing","character-narrator","indie-folk"],"folklore-03":[148,231,"mid","medium","storytelling-fiction","home-and-place","observer","indie-folk"],"folklore-04":[76,285,"ballad","low","heartbreak","betrayal","character-narrator","chamber-pop"],"folklore-05":[130,255,"ballad","low","betrayal","grief","second-person-address","chamber-pop"],"folklore-06":[110,209,"mid","low","fame-and-reputation","self-reflection","second-person-address","indie-folk"],"folklore-07":[95,208,"mid","low","nostalgia","friendship","second-person-address","indie-folk"],"folklore-08":[90,261,"mid","medium","forbidden-love","longing","character-narrator","indie-folk"],"folklore-09":[136,195,"ballad","low","self-reflection","anxiety","first-person-confessional","chamber-pop"],"folklore-10":[120,190,"ballad","low","forbidden-love","sex-and-desire","second-person-address","indie-folk"],"folklore-11":[83,252,"mid","low","falling-in-love","seasons-and-time","second-person-address","indie-folk"],"folklore-12":[142,237,"mid","low","defiance","fame-and-reputation","second-person-address","chamber-pop"],"folklore-13":[94,289,"ballad","low","grief","storytelling-fiction","observer","chamber-pop"],"folklore-14":[96,294,"mid","medium","storytelling-fiction","growing-up","character-narrator","indie-folk"],"folklore-15":[75,234,"ballad","low","falling-in-love","anxiety","second-person-address","indie-folk"],"folklore-16":[119,220,"ballad","low","heartbreak","betrayal","second-person-address","chamber-pop"],"folklore-17":[90,211,"ballad","low","escape","home-and-place","second-person-address","chamber-pop"],"evermore-01":[81,214,"mid","low","falling-in-love","fantasy-fairytale","second-person-address","indie-folk"],"evermore-02":[86,244,"ballad","low","heartbreak","storytelling-fiction","character-narrator","indie-folk"],"evermore-03":[112,185,"mid","medium","longing","anxiety","first-person-confessional","chamber-pop"],"evermore-04":[146,229,"mid","medium","home-and-place","seasons-and-time","character-narrator","indie-folk"],"evermore-05":[75,245,"ballad","low","longing","betrayal","second-person-address","chamber-pop"],"evermore-06":[79,215,"mid","high","storytelling-fiction","revenge","character-narrator","country"],"evermore-07":[122,315,"ballad","low","heartbreak","self-reflection","second-person-address","indie-folk"],"evermore-08":[120,225,"mid","medium","nostalgia","longing","character-narrator","indie-folk"],"evermore-09":[108,275,"ballad","low","heartbreak","nostalgia","character-narrator","chamber-pop"],"evermore-10":[89,260,"mid","medium","forbidden-love","falling-in-love","character-narrator","indie-folk"],"evermore-11":[128,275,"mid","low","storytelling-fiction","falling-in-love","character-narrator","country"],"evermore-12":[79,215,"uptempo","high","self-reflection","fame-and-reputation","first-person-confessional","indie-folk"],"evermore-13":[96,257,"ballad","low","grief","family","second-person-address","chamber-pop"],"evermore-14":[76,180,"mid","medium","defiance","heartbreak","second-person-address","electro-pop"],"evermore-15":[125,304,"ballad","low","grief","self-reflection","first-person-confessional","chamber-pop"],"evermore-16":[138,245,"mid","medium","heartbreak","seasons-and-time","character-narrator","indie-folk"],"evermore-17":[76,255,"mid","medium","self-reflection","escape","second-person-address","indie-folk"],"midnights-01":[97,202,"mid","medium","fame-and-reputation","falling-in-love","second-person-address","synth-pop"],"midnights-02":[108,218,"mid","medium","nostalgia","heartbreak","second-person-address","synth-pop"],"midnights-03":[97,200,"mid","medium","self-reflection","anxiety","first-person-confessional","synth-pop"],"midnights-04":[110,256,"ballad","low","falling-in-love","fantasy-fairytale","second-person-address","synth-pop"],"midnights-05":[120,194,"mid","medium","growing-up","self-reflection","second-person-address","synth-pop"],"midnights-06":[138,174,"mid","medium","heartbreak","fame-and-reputation","first-person-confessional","electro-pop"],"midnights-07":[109,210,"mid","medium","longing","nostalgia","second-person-address","synth-pop"],"midnights-08":[80,164,"ballad","medium","revenge","betrayal","first-person-confessional","electro-pop"],"midnights-09":[82,194,"uptempo","high","defiance","celebration","second-person-address","dance-pop"],"midnights-10":[110,247,"ballad","low","anxiety","falling-in-love","first-person-confessional","synth-pop"],"midnights-11":[90,204,"uptempo","high","defiance","celebration","second-person-address","dance-pop"],"midnights-12":[88,188,"ballad","low","falling-in-love","escape","second-person-address","chamber-pop"],"midnights-13":[126,191,"mid","medium","self-reflection","falling-in-love","second-person-address","synth-pop"],"midnights-14":[96,240,"mid","medium","anxiety","falling-in-love","second-person-address","synth-pop"],"midnights-15":[83,218,"ballad","low","grief","anxiety","second-person-address","synth-pop"],"midnights-16":[111,196,"uptempo","high","escape","falling-in-love","second-person-address","synth-pop"],"midnights-17":[88,231,"mid","medium","betrayal","anxiety","second-person-address","synth-pop"],"midnights-18":[141,148,"mid","medium","falling-in-love","self-reflection","second-person-address","electro-pop"],"midnights-19":[79,260,"uptempo","high","betrayal","growing-up","second-person-address","rock-tinged"],"midnights-20":[108,225,"ballad","low","self-reflection","fame-and-reputation","second-person-address","synth-pop"],"midnights-21":[106,234,"uptempo","high","heartbreak","anxiety","second-person-address","pop"],"midnights-22":[103,278,"ballad","low","heartbreak","anxiety","second-person-address","synth-pop"],"ttpd-01":[96,228,"mid","medium","longing","forbidden-love","second-person-address","synth-pop"],"ttpd-02":[110,293,"mid","medium","self-reflection","falling-in-love","second-person-address","synth-pop"],"ttpd-03":[97,203,"uptempo","medium","heartbreak","storytelling-fiction","first-person-confessional","synth-pop"],"ttpd-04":[80,261,"mid","medium","heartbreak","longing","second-person-address","synth-pop"],"ttpd-05":[80,262,"mid","medium","heartbreak","home-and-place","second-person-address","synth-pop"],"ttpd-06":[80,340,"uptempo","high","defiance","forbidden-love","first-person-confessional","country-pop"],"ttpd-07":[87,210,"mid","medium","escape","longing","second-person-address","indie-folk"],"ttpd-08":[75,215,"uptempo","high","escape","revenge","first-person-confessional","rock-tinged"],"ttpd-09":[95,254,"mid","medium","sex-and-desire","forbidden-love","first-person-confessional","synth-pop"],"ttpd-10":[120,334,"mid","high","defiance","fame-and-reputation","second-person-address","rock-tinged"],"ttpd-11":[107,156,"ballad","low","storytelling-fiction","longing","character-narrator","country"],"ttpd-12":[79,277,"ballad","low","betrayal","grief","second-person-address","chamber-pop"],"ttpd-13":[130,218,"uptempo","high","fame-and-reputation","heartbreak","first-person-confessional","dance-pop"],"ttpd-14":[142,245,"ballad","medium","betrayal","revenge","second-person-address","chamber-pop"],"ttpd-15":[100,196,"mid","medium","falling-in-love","celebration","second-person-address","synth-pop"],"ttpd-16":[104,216,"ballad","low","fame-and-reputation","storytelling-fiction","second-person-address","indie-folk"],"ttpd-17":[94,224,"ballad","low","nostalgia","self-reflection","observer","chamber-pop"],"ttpd-18":[77,238,"ballad","medium","heartbreak","anxiety","second-person-address","rock-tinged"],"ttpd-19":[110,222,"mid","medium","revenge","longing","second-person-address","synth-pop"],"ttpd-20":[86,183,"ballad","low","fame-and-reputation","defiance","character-narrator","indie-folk"],"ttpd-21":[70,213,"ballad","low","heartbreak","longing","second-person-address","chamber-pop"],"ttpd-22":[84,238,"ballad","low","heartbreak","fame-and-reputation","first-person-confessional","chamber-pop"],"ttpd-23":[88,228,"uptempo","high","falling-in-love","nostalgia","second-person-address","rock-tinged"],"ttpd-24":[106,243,"ballad","low","escape","self-reflection","first-person-confessional","indie-folk"],"ttpd-25":[96,263,"mid","medium","revenge","growing-up","second-person-address","country-pop"],"ttpd-26":[91,131,"ballad","low","longing","heartbreak","first-person-confessional","chamber-pop"],"ttpd-27":[84,249,"ballad","low","longing","anxiety","first-person-confessional","indie-folk"],"ttpd-28":[140,240,"ballad","low","betrayal","fame-and-reputation","character-narrator","chamber-pop"],"ttpd-29":[88,283,"ballad","low","longing","growing-up","second-person-address","chamber-pop"],"ttpd-30":[92,238,"mid","medium","storytelling-fiction","escape","observer","indie-folk"],"ttpd-31":[138,240,"ballad","low","growing-up","family","second-person-address","chamber-pop"],"showgirl-01":[124,226,"uptempo","high","falling-in-love","fantasy-fairytale","second-person-address","dance-pop"],"showgirl-02":[82,208,"mid","medium","fame-and-reputation","falling-in-love","first-person-confessional","pop"],"showgirl-03":[125,235,"uptempo","high","falling-in-love","self-reflection","second-person-address","pop"],"showgirl-04":[94,212,"mid","medium","fame-and-reputation","betrayal","character-narrator","synth-pop"],"showgirl-05":[77,246,"ballad","low","self-reflection","family","first-person-confessional","chamber-pop"],"showgirl-06":[80,220,"mid","medium","nostalgia","longing","second-person-address","pop"],"showgirl-07":[85,163,"mid","medium","revenge","fame-and-reputation","second-person-address","rock-tinged"],"showgirl-08":[148,207,"uptempo","high","falling-in-love","escape","first-person-confessional","synth-pop"],"showgirl-09":[100,150,"uptempo","high","sex-and-desire","celebration","second-person-address","dance-pop"],"showgirl-10":[91,211,"mid","medium","friendship","fame-and-reputation","second-person-address","electro-pop"],"showgirl-11":[82,181,"mid","medium","falling-in-love","self-reflection","second-person-address","pop"],"showgirl-12":[78,241,"mid","medium","fame-and-reputation","storytelling-fiction","character-narrator","dance-pop"],"showgirl-13":[92,225,"","high","","","",""],"showgirl-14":[149,206,"","high","","","",""],"showgirl-15":[106,190,"","medium","","","",""],"showgirl-16":[78,219,"","high","","","",""],"singles-01":[133,192,"ballad","low","falling-in-love","fantasy-fairytale","second-person-address","country"],"singles-02":[145,240,"ballad","low","grief","family","second-person-address","indie-folk"],"singles-03":[137,245,"uptempo","high","defiance","anxiety","second-person-address","rock-tinged"],"singles-04":[118,247,"mid","medium","longing","sex-and-desire","second-person-address","electro-pop"],"singles-05":[88,261,"ballad","low","longing","self-reflection","first-person-confessional","chamber-pop"],"singles-06":[134,228,"uptempo","high","seasons-and-time","nostalgia","first-person-confessional","pop"],"singles-07":[94,158,"mid","medium","defiance","growing-up","second-person-address","electro-pop"],"singles-08":[116,264,"ballad","low","storytelling-fiction","home-and-place","character-narrator","indie-folk"],"singles-09":[93,178,"","medium","","","",""]};
+const LABEL={0:"Don't know it",1:'Skip it',2:'Meh',3:'Good',4:'Love it',5:'Top tier'};
+
+let R={};            // songId -> {r, ts, ...}
+let cursor=0, mode='rate', filter='all', touched=false, db=null, pending=0;
+const chains={};
+const $=id=>document.getElementById(id);
+
+/* ---------- storage ---------- */
+function loadLocal(){try{const raw=localStorage.getItem('clubledger.r');if(raw)R=JSON.parse(raw)||{};}catch(e){}}
+function storageOK(){try{localStorage.setItem('clubledger.t','1');localStorage.removeItem('clubledger.t');return true;}catch(e){return false;}}
+function saveLocal(){try{localStorage.setItem('clubledger.r',JSON.stringify(R));}catch(e){}}
+function setSave(txt,cls){const el=$('save');el.textContent=txt;el.className='save '+(cls||'');}
+
+async function connect(){ setSave(storageOK()?'Saved in this browser':'Not saving: finish in one sitting', storageOK()?'ok':'err'); return;
+
+  let d=null;
+  try{ if(window.claude&&window.claude.use) d=await window.claude.use('db'); }catch(e){ d=null; }
+  if(!d){ setSave('Saved on this device only',''); return; }
+  db=d; setSave('Syncing','busy');
+  db.collection('ratings').onSnapshot(snap=>{
+    snap.docChanges().forEach(ch=>{
+      if(ch.type==='removed') delete R[ch.doc.id];
+      else R[ch.doc.id]=ch.doc.data();
+    });
+    saveLocal();
+    if(!touched){ const f=firstUnrated(); if(f>=0) cursor=f; }
+    if(!pending) setSave(snap.metadata.fromCache?'Syncing':'Saved','ok');
+    renderAll();
+  },err=>{ setSave('Sync lost — reload to reconnect','err'); });
+}
+function rate(id,r){
+  const s=byId[id];
+  const rec={r,ts:Date.now(),album:s.album.id,albumName:s.album.name,title:s.t,track:s.si+1};
+  R[id]=rec; saveLocal();
+  if(!db) return;
+  pending++; setSave('Saving','busy');
+  const run=()=>db.doc('ratings/'+id).set(rec).then(()=>{},e=>{ setSave('Not saved: '+(e&&e.code||'error'),'err'); throw e; });
+  chains[id]=(chains[id]||Promise.resolve()).then(run,run).finally(()=>{ pending--; if(!pending&&!$('save').classList.contains('err')) setSave('Saved','ok'); });
+}
+
+/* ---------- helpers ---------- */
+function isRated(s){return R[s.id]&&typeof R[s.id].r==='number';}
+function firstUnrated(from){from=from||0;for(let i=from;i<SONGS.length;i++)if(!isRated(SONGS[i]))return i;for(let i=0;i<from;i++)if(!isRated(SONGS[i]))return i;return -1;}
+function albumStats(a){let n=0,k=0,sum=0,dk=0;a.songs.forEach((sg,si)=>{const rec=R[a.id+'-'+String(si+1).padStart(2,'0')];if(rec&&typeof rec.r==='number'){n++;if(rec.r===0)dk++;else{k++;sum+=rec.r;}}});return{n,k,dk,avg:k?sum/k:null,total:a.songs.length};}
+function totals(){let n=0,dk=0;SONGS.forEach(s=>{if(isRated(s)){n++;if(R[s.id].r===0)dk++;}});return{n,dk,total:SONGS.length};}
+let toastT;function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200);}
+
+/* ---------- render ---------- */
+function renderAlbums(){
+  const cur=SONGS[cursor]?SONGS[cursor].album:null;
+  const el=$('albums');el.innerHTML='';
+  ALBUMS.forEach(a=>{
+    const st=albumStats(a);
+    const b=document.createElement('button');
+    b.className='chip'+(cur===a?' cur':'')+(st.n===st.total?' done':'');
+    b.style.setProperty('--c',a.color);
+    b.innerHTML='<span class="dot"></span><span>'+(a.short||a.name)+'</span><span class="n">'+st.n+'/'+st.total+'</span>';
+    b.addEventListener('click',()=>{touched=true;const first=SONGS.findIndex(s=>s.album===a);let i=first;for(let j=first;j<first+a.songs.length;j++)if(!isRated(SONGS[j])){i=j;break;}cursor=i;setMode('rate');renderAll();});
+    el.appendChild(b);
+    if(cur===a&&mode==='rate') requestAnimationFrame(()=>{const L=b.offsetLeft-el.clientWidth/2+b.offsetWidth/2;el.scrollTo({left:Math.max(0,L),behavior:'smooth'});});
+  });
+}
+function renderCard(){
+  const s=SONGS[cursor];if(!s)return;
+  document.getElementById('app').style.setProperty('--era',s.album.color);
+  $('c-album').textContent=s.album.name+(s.album.year?' · '+s.album.year:'');
+  $('c-track').textContent='track '+(s.si+1)+' of '+s.album.songs.length;
+  $('c-five').hidden=!(s.si===4&&s.album.id!=='singles');
+  $('c-vault').hidden=!s.v;$('c-bonus').hidden=!s.b;
+  $('c-title').textContent=s.t;
+  $('c-feat').hidden=!s.f;$('c-feat').textContent=s.f||'';
+  const rec=R[s.id];
+  const has=rec&&typeof rec.r==='number';
+  $('c-cur').hidden=!has;if(has)$('c-cur').innerHTML='Rated <b>'+LABEL[rec.r]+'</b> · tap to change';
+  document.querySelectorAll('.rb').forEach(b=>b.classList.toggle('on',has&&Number(b.dataset.r)===rec.r));
+  const t=totals();
+  $('prog').textContent=t.n+' / '+t.total+' rated';
+  $('bar').style.width=(100*t.n/t.total)+'%';
+}
+function renderList(){const keepY=window.scrollY;
+  const t=totals();
+  const counts={all:t.total,listen:t.dk,unrated:t.total-t.n,top:SONGS.filter(s=>isRated(s)&&R[s.id].r===5).length,skip:SONGS.filter(s=>isRated(s)&&R[s.id].r===1).length};
+  const F=[['all','All'],['listen','To listen'],['top','Top tier'],['skip','Skips'],['unrated','Unrated']];
+  const fe=$('filters');fe.innerHTML='';
+  F.forEach(([k,l])=>{const b=document.createElement('button');b.className=filter===k?'on':'';b.innerHTML=l+'<span class="n">'+counts[k]+'</span>';b.addEventListener('click',()=>{filter=k;renderList();});fe.appendChild(b);});
+  const pass=s=>{const rec=R[s.id];const has=rec&&typeof rec.r==='number';
+    if(filter==='all')return true;if(filter==='listen')return has&&rec.r===0;if(filter==='unrated')return !has;if(filter==='top')return has&&rec.r===5;if(filter==='skip')return has&&rec.r===1;return true;};
+  const le=$('list');le.innerHTML='';let any=false;
+  ALBUMS.forEach(a=>{
+    const songs=SONGS.filter(s=>s.album===a&&pass(s));if(!songs.length)return;any=true;
+    const st=albumStats(a);
+    const g=document.createElement('div');g.className='group';g.style.setProperty('--c',a.color);
+    g.innerHTML='<h2><span class="dot"></span>'+a.name+'<span class="avg">'+(st.avg!==null?'avg '+st.avg.toFixed(2):'')+(st.dk?' · '+st.dk+' to listen':'')+'</span></h2>';
+    songs.forEach(s=>{
+      const rec=R[s.id];const has=rec&&typeof rec.r==='number';
+      const row=document.createElement('div');row.className='row';
+      row.innerHTML='<span class="no">'+(s.si+1)+'</span><span class="ti" data-i="'+SONGS.indexOf(s)+'" role="button" tabindex="0" title="Open in Rate">'+esc(s.t)+(s.f?' <small>'+esc(s.f)+'</small>':'')+'</span>';
+      const m=document.createElement('div');m.className='mini';
+      [1,2,3,4,5,0].forEach(r=>{const b=document.createElement('button');b.textContent=r===0?'?':r;b.title=LABEL[r];b.className=(r===0?'dk':'')+(has&&rec.r===r?' on':'');b.addEventListener('click',()=>{touched=true;rate(s.id,r);renderList();renderAlbums();});m.appendChild(b);});
+      row.querySelector('.ti').addEventListener('click',()=>{touched=true;cursor=SONGS.indexOf(s);setMode('rate');});
+      row.appendChild(m);g.appendChild(row);
+    });
+    le.appendChild(g);
+  });
+  if(!any){le.innerHTML='<div class="empty">Nothing here yet.</div>';}
+  if(window.scrollY!==keepY)window.scrollTo(0,keepY);
+}
+function renderDone(){
+  const t=totals();
+  const ranked=ALBUMS.filter(a=>a.id!=='singles').map(a=>({a,st:albumStats(a)})).filter(x=>x.st.avg!==null).sort((x,y)=>y.st.avg-x.st.avg);
+  const top=SONGS.filter(s=>isRated(s)&&R[s.id].r===5).length;
+  const listen=SONGS.filter(s=>isRated(s)&&R[s.id].r===0);
+  let h='<div class="done"><h1>All '+t.total+' songs rated.</h1>';
+  h+='<div class="stats"><div class="stat"><b>'+top+'</b><span>top tier</span></div><div class="stat"><b>'+listen.length+'</b><span>to listen</span></div>'+(ranked[0]?'<div class="stat"><b>'+esc(ranked[0].a.short||ranked[0].a.name)+'</b><span>highest album avg '+ranked[0].st.avg.toFixed(2)+'</span></div>':'')+(ranked.length>1?'<div class="stat"><b>'+esc(ranked[ranked.length-1].a.short||ranked[ranked.length-1].a.name)+'</b><span>lowest album avg '+ranked[ranked.length-1].st.avg.toFixed(2)+'</span></div>':'')+'</div>';
+  if(listen.length){h+='<div><div class="eyebrow" style="margin-bottom:6px">Listen to these next</div><div class="tolisten">'+listen.map(s=>'<div><span class="a">'+esc(s.album.short||s.album.name)+'</span><span>'+esc(s.t)+'</span></div>').join('')+'</div></div>';}
+  h+='<p>Your ratings are saved in this browser. The Results tab updates whenever you change a rating or rate a song after you\'ve listened to it.</p>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="again" id="seeres">See your results</button><button class="again" id="again">Open the review list</button></div></div>';
+  $('done-view').innerHTML=h;
+  $('again').addEventListener('click',()=>{filter='listen';setMode('list');});$('seeres').addEventListener('click',()=>setMode('res'));
+}
+function renderAll(){renderAlbums();if(mode==='rate')renderCard();else if(mode==='list')renderList();else if(mode==='res')renderResults();else renderDone();}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function setMode(m){const prev=mode;mode=m;$('rate-view').hidden=m!=='rate';$('list-view').hidden=m!=='list';$('done-view').hidden=m!=='done';$('res-view').hidden=m!=='res';$('albums').hidden=m==='res';$('mode-rate').classList.toggle('on',m==='rate'||m==='done');$('mode-list').classList.toggle('on',m==='list');$('mode-res').classList.toggle('on',m==='res');const changed=prev!==m;renderAll();if(changed)window.scrollTo({top:0});}
+
+
+/* ---------- results ---------- */
+const THEME_LABEL=t=>t.replace(/-/g,' ');
+function hbar(label,val,max,color,sub,title){return '<div class="hb" title="'+esc(title||'')+'"><div class="lab">'+label+(sub?'<small>'+sub+'</small>':'')+'</div><div class="trk"><div class="fill" style="width:'+Math.max(0,val/max*100)+'%;background:'+color+'"></div></div><div class="val">'+(val?val.toFixed(2):'–')+'</div></div>';}
+function renderResults(){
+  const known=SONGS.filter(s=>isRated(s)&&R[s.id].r>0);
+  const dk=SONGS.filter(s=>isRated(s)&&R[s.id].r===0).length;
+  const overall=known.reduce((a,s)=>a+R[s.id].r,0)/(known.length||1);
+  $('res-sub').textContent=known.length+' songs rated · '+dk+' still to listen · overall average '+overall.toFixed(2);
+  const albs=ALBUMS.filter(a=>a.id!=='singles').map(a=>({a,st:albumStats(a),fives:a.songs.filter((sg,si)=>{const r=R[a.id+'-'+String(si+1).padStart(2,'0')];return r&&r.r===5;}).length,ones:a.songs.filter((sg,si)=>{const r=R[a.id+'-'+String(si+1).padStart(2,'0')];return r&&r.r===1;}).length})).filter(x=>x.st.avg!==null);
+  albs.sort((x,y)=>(y.st.avg-x.st.avg)||(y.fives-x.fives));
+  $('res-albums').innerHTML=albs.map((x,i)=>hbar('<span class="rk">'+(i+1)+'</span>'+esc(x.a.short||x.a.name),x.st.avg,5,x.a.color,x.fives+' top tier · '+x.ones+(x.ones===1?' skip':' skips')+(x.st.dk?' · '+x.st.dk+' to listen':''),x.a.name+': average '+x.st.avg.toFixed(2)+' across '+x.st.k+' songs')).join('');
+  // themes
+  const T={};known.forEach(s=>{const m=META[s.id];if(!m)return;[m[4],m[5]].forEach(t=>{if(!t)return;(T[t]=T[t]||[]).push(R[s.id].r);});});
+  const th=Object.keys(T).filter(t=>T[t].length>=6).map(t=>({t,n:T[t].length,avg:T[t].reduce((a,b)=>a+b,0)/T[t].length})).sort((a,b)=>b.avg-a.avg);
+  const span=Math.max(1,...th.map(x=>Math.abs(x.avg-overall)));
+  $('res-themes').innerHTML=th.map(x=>{const d=Math.abs(x.avg-overall)<0.005?0:x.avg-overall;const w=Math.abs(d)/span*50;return '<div class="hb div" title="'+esc(THEME_LABEL(x.t))+': average '+x.avg.toFixed(2)+' across '+x.n+' tags"><div class="lab">'+esc(THEME_LABEL(x.t))+'<small>'+x.n+' songs</small></div><div class="trk"><div class="mid"></div><div class="fill '+(d>=0?'pos':'neg')+'" style="left:'+(d>=0?50:50-w)+'%;width:'+w+'%;border-radius:4px"></div></div><div class="val">'+(d>=0?'+':'−')+Math.abs(d).toFixed(2)+'</div></div>';}).join('');
+  // tempo
+  const B=[['under 85',0,85],['85–99',85,100],['100–114',100,115],['115–129',115,130],['130+',130,999]];
+  const bpmRows=B.map(([l,lo,hi])=>{const v=known.filter(s=>META[s.id]&&META[s.id][0]>=lo&&META[s.id][0]<hi).map(s=>R[s.id].r);return{l,n:v.length,avg:v.length?v.reduce((a,b)=>a+b,0)/v.length:0};});
+  $('res-bpm').innerHTML='<h3>By BPM</h3>'+bpmRows.map(x=>hbar(x.l+' bpm',x.avg,5,'var(--muted)',x.n+' songs',x.l+' BPM: average '+x.avg.toFixed(2))).join('');
+  const feels=['ballad','mid','uptempo'].map(f=>{const v=known.filter(s=>META[s.id]&&META[s.id][2]===f).map(s=>R[s.id].r);return{f,n:v.length,avg:v.length?v.reduce((a,b)=>a+b,0)/v.length:0,v};});
+  $('res-feel').innerHTML='<h3>By feel</h3>'+feels.map(x=>hbar(x.f==='mid'?'mid-tempo':x.f,x.avg,5,'var(--muted)',x.n+' songs',x.f+': average '+x.avg.toFixed(2))).join('');
+  const five=known.filter(s=>R[s.id].r===5),one=known.filter(s=>R[s.id].r===1);
+  const pb=a=>a.length?Math.round(100*a.filter(s=>META[s.id]&&META[s.id][2]==='ballad').length/a.length):0;
+  $('res-ballad').textContent='Ballads make up '+pb(five)+'% of your top-tier songs and '+pb(one)+'% of your skips.';
+  // songs by tier
+  let h='';[5,4,3,2,1,0].forEach(r=>{const list=SONGS.filter(s=>isRated(s)&&R[s.id].r===r);if(!list.length)return;
+    h+='<div class="tier"><h3>'+LABEL[r]+' <span>'+list.length+'</span></h3><ul>'+list.map(s=>'<li style="--c:'+s.album.color+'"><i></i><span>'+esc(s.t)+' <small>'+esc(s.album.short||s.album.name)+'</small></span></li>').join('')+'</ul></div>';});
+  $('res-songs').innerHTML=h;
+  const f=[];
+  if(albs.length){f.push('<p><b>Favorite album:</b> '+esc(albs[0].a.name)+' ('+albs[0].st.avg.toFixed(2)+'). <b>Least favorite:</b> '+esc(albs[albs.length-1].a.name)+' ('+albs[albs.length-1].st.avg.toFixed(2)+').</p>');}
+  const up=th.filter(x=>x.avg-overall>0.15).slice(0,3),dn=th.filter(x=>overall-x.avg>0.15).slice(-3).reverse();
+  if(up.length)f.push('<p><b>Themes you love:</b> '+up.map(x=>esc(THEME_LABEL(x.t))).join(', ')+'.</p>');
+  if(dn.length)f.push('<p><b>Themes you skip:</b> '+dn.map(x=>esc(THEME_LABEL(x.t))).join(', ')+'.</p>');
+  const fr=feels.filter(x=>x.n).sort((a,b)=>b.avg-a.avg);
+  if(fr.length>1)f.push('<p><b>Speed:</b> you rate '+(fr[0].f==='mid'?'mid-tempo':fr[0].f)+(fr[0].f==='ballad'?'s':' songs')+' highest ('+fr[0].avg.toFixed(2)+') and '+(fr[fr.length-1].f==='mid'?'mid-tempo':fr[fr.length-1].f)+(fr[fr.length-1].f==='ballad'?'s':' songs')+' lowest ('+fr[fr.length-1].avg.toFixed(2)+'). Ballads are '+pb(five)+'% of your top-tier songs.</p>');
+  if(!known.length)f.push('<p>Rate some songs and your results will show up here.</p>');
+  f.push('<p class="note">Tempo comes from Spotify-derived data. Theme and feel tags are one careful read of each song, not an official source.</p>');
+  $('res-find').innerHTML=f.join('');
+  window._clubText='My Taylor Swift ratings ('+known.length+' songs)\n\nAlbum ranking:\n'+albs.map((x,i)=>(i+1)+'. '+x.a.name+' '+x.st.avg.toFixed(2)).join('\n')+'\n\nTop tier:\n'+five.map(s=>'- '+s.t).join('\n')+(up.length?'\n\nThemes I love: '+up.map(x=>THEME_LABEL(x.t)).join(', '):'');
+}
+$('copyres').addEventListener('click',()=>{const t=window._clubText||'';const box=$('copybox');
+  navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t).then(()=>{$('copynote').textContent='Copied. Paste it anywhere.';},()=>{box.hidden=false;box.value=t;box.select();$('copynote').textContent='Select all and copy the text below.';}):(box.hidden=false,box.value=t,box.select(),$('copynote').textContent='Select all and copy the text below.');});
+
+/* ---------- actions ---------- */
+function advance(wasRated){
+  const s=SONGS[cursor];const a=s.album;
+  const st=albumStats(a);
+  if(st.n===st.total&&!a._toasted){a._toasted=true;toast((a.short||a.name)+' done · '+st.k+' rated'+(st.dk?' · '+st.dk+' to listen':''));}
+  let next=wasRated?cursor+1:firstUnrated(cursor+1);
+  if(next<0||next>=SONGS.length){if(firstUnrated()<0){setMode('done');return;}next=firstUnrated();}
+  cursor=next;renderAll();
+}
+function tapRate(r){
+  touched=true;const s=SONGS[cursor];if(!s)return;
+  const b=document.querySelector('.rb[data-r="'+r+'"]');
+  if(b){b.classList.add('flash');setTimeout(()=>b.classList.remove('flash'),140);}
+  const was=isRated(s);
+  rate(s.id,r);
+  setTimeout(()=>advance(was),120);
+}
+document.querySelectorAll('.rb').forEach(b=>b.addEventListener('click',()=>tapRate(Number(b.dataset.r))));
+$('back').addEventListener('click',()=>{touched=true;if(cursor>0){cursor--;renderAll();}});
+$('skip').addEventListener('click',()=>{touched=true;const n=firstUnrated(cursor+1);if(n>=0&&n!==cursor){cursor=n;renderAll();}else if(cursor<SONGS.length-1){cursor++;renderAll();}else toast('That was the last song');});
+$('mode-rate').addEventListener('click',()=>setMode('rate'));
+$('mode-list').addEventListener('click',()=>setMode('list'));
+$('mode-res').addEventListener('click',()=>setMode('res'));
+document.addEventListener('keydown',e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(e.key==='Escape'){setMode(mode==='rate'?'list':'rate');return;}
+  if(mode!=='rate')return;
+  if(/^[1-5]$/.test(e.key)){tapRate(Number(e.key));e.preventDefault();}
+  else if(e.key==='0'||e.key==='?'||e.key==='/'||e.key==='d'||e.key==='D'){tapRate(0);e.preventDefault();}
+  else if(e.key==='ArrowLeft'||e.key==='Backspace'){$('back').click();e.preventDefault();}
+  else if(e.key==='ArrowRight'){$('skip').click();e.preventDefault();}
+});
+
+/* ---------- boot ---------- */
+function start(hot){
+  loadLocal();
+  if(hot&&typeof hot.cursor==='number')cursor=hot.cursor;else{const f=firstUnrated();cursor=f>=0?f:0;}
+  if(hot&&hot.mode)mode=hot.mode;
+  setMode(mode);
+  connect();
+}
+if(window.claude&&window.claude.hot&&window.claude.hot.snapshot){window.claude.hot.snapshot(()=>({cursor,mode}));}
+if(window.claude&&window.claude.hot&&window.claude.hot.ready){window.claude.hot.ready(start);}else{start((window.claude&&window.claude.hot&&window.claude.hot.data)||{});}
+})();
+</script>
+
+</body></html>
